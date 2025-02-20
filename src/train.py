@@ -143,86 +143,30 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 #    return x, y
 
 # Modifying the data loading process so that we can 1) store the whole dataset in RAM, and 2) take advantage of multiple CPU cores.
-#   This isn't straightforward because we need to ensure that a single dataset is shared across all processes, and the basic
-#   functions to load to RAM don't use multiprocessing and take an absurdly long time with a big dataset like this. I'm going to use
-#   ChatGPT's suggestions for how to do this.
-
-def _load_chunk(filename, offset, count, dtype):
-    with open(filename, 'rb') as f:
-        f.seek(offset)
-        return np.fromfile(f, dtype=dtype, count=count)
-def fast_load_np(filename, dtype=np.uint16, num_workers=8):
-    file_size = os.path.getsize(filename)
-    num_elements = file_size // np.dtype(dtype).itemsize
-    chunk_size = num_elements // num_workers
-    offsets = [i*chunk_size*np.dtype(dtype).itemsize for i in range(num_workers)]
-    counts = [chunk_size]*num_workers
-    counts[-1] = num_elements - chunk_size*(num_workers - 1)
-    args = [(filename, offset, count, dtype) for offset, count in zip(offsets, counts)]
-    with multiprocessing.Pool(num_workers) as pool:
-        chunks = pool.starmap(_load_chunk, args)
-    return np.concatenate(chunks)
-def load_dataset_to_shared_memory(data_dir, split, num_workers=8):
-    filename = os.path.join(data_dir, f'{split}.bin')
-    data = fast_load_np(filename, num_workers=num_workers)
-    shm_name = f'{split}_shm'
-    try:
-        shm = shared_memory.SharedMemory(name=shm_name, create=True, size=data.nbytes)
-    except FileExistsError:
-        # If the shared memory already exists, remove it and try again.
-        existing_shm = shared_memory.SharedMemory(name=shm_name, create=False)
-        existing_shm.unlink()
-        shm = shared_memory.SharedMemory(name=shm_name, create=True, size=data.nbytes)
-    shared_data = np.ndarray(data.shape, dtype=data.dtype, buffer=shm.buf)
-    shared_data[:] = data[:]
-    return data.shape, str(data.dtype), shm
-def attach_shared_memory(name, shape, dtype):
-    shm = shared_memory.SharedMemory(name=name, create=False)
-    return np.ndarray(shape, dtype=dtype, buffer=shm.buf), shm
 
 data_dir = os.path.join('data', dataset)
+train_dataset = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
+val_dataset = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
 if ddp_rank == 0:
-    train_shape, train_dtype_str, train_shm = load_dataset_to_shared_memory(data_dir, 'train', num_workers=cpu_cores)
-    val_shape, val_dtype_str, val_shm = load_dataset_to_shared_memory(data_dir, 'val', num_workers=cpu_cores)
-    print('Loaded dataset to shared memory.')
+    train_indices = np.random.choice(len(train_dataset), len(train_dataset), replace=False)
+    val_indices = np.random.choice(len(val_dataset), len(val_dataset), replace=False)
 else:
-    train_shape, train_dtype_str, train_shm = None, None, None
-    val_shape, val_dtype_str, val_shm = None, None, None
-dataset_info = [train_shape, train_dtype_str, val_shape, val_dtype_str]
-torch.distributed.broadcast_object_list(dataset_info, src=0)
-train_shape, train_dtype_str, val_shape, val_dtype_str = dataset_info
-train_dtype = np.dtype(train_dtype_str)
-val_dtype = np.dtype(val_dtype_str)
-if ddp_rank != 0:
-    print(f'Attaching rank {ddp_rank} to shared memory.')
-    train_array, train_shm = attach_shared_memory('train_shm', train_shape, train_dtype)
-    val_array, val_shm = attach_shared_memory('val_shm', val_shape, val_dtype)
-    print(f'Done (rank {ddp_rank})')
-else:
-    print('Attaching rank 0 to shared memory.')
-    train_array = np.ndarray(train_shape, dtype=train_dtype, buffer=train_shm.buf)
-    val_array = np.ndarray(val_shape, dtype=val_dtype, buffer=val_shm.buf)
-    print(f'Done (rank 0)')
-
-class SharedMemoryDataset(Dataset):
-    def __init__(self, data_array):
-        super().__init__()
-        self.data = data_array
-    def __getitem__(self, idx):
-        x = torch.from_numpy(self.data[idx:idx+block_size].astype(np.int64))
-        y = torch.from_numpy(self.data[idx+1:idx+block_size+1].astype(np.int64))
-        return x, y
-    def __len__(self):
-        return len(self.data) - block_size
-train_dataset = SharedMemoryDataset(train_array)
-val_dataset = SharedMemoryDataset(val_array)
-train_sampler = DistributedSampler(train_dataset, shuffle=True, num_replicas=ddp_world_size, rank=ddp_rank)
-val_sampler = DistributedSampler(val_dataset, num_replicas=ddp_world_size, rank=ddp_rank)
-train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, pin_memory=True, num_workers=0)
-val_dataloader = DataLoader(val_dataset, batch_size=batch_size, sampler=val_sampler, pin_memory=True, num_workers=0)
-
-torch.distributed.barrier()
-print('Finished creating datasets.')
+    train_indices = val_indices = None
+indices = [train_indices, val_indices]
+torch.distributed.broadcast_object_list(indices, src=0)
+[train_indices, val_indices] = indices
+def get_dataloader(split):
+    indices = train_indices if split == 'train' else val_indices if split == 'val' else None
+    dataset = train_dataset if split == 'train' else val_dataset if split == 'val' else None
+    local_start_idx = int(len(indices)*ddp_rank/ddp_world_size)
+    local_end_idx = min(len(dataset), int(len(indices)*(ddp_rank+1)/ddp_world_size))
+    indices = np.arange(local_start_idx, local_end_idx)
+    print(indices)
+    dataset = np.array(dataset[indices])
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=split=='train', pin_memory=False, num_workers=0)
+    return dataloader
+train_dataloader = get_dataloader('train')
+val_dataloader = get_dataloader('val')
 
 def dataloader_iterator(dataloader):
     for batch in dataloader:
@@ -322,7 +266,6 @@ if False: # compile:
 
 # wrap model into DDP container
 if ddp:
-    print('putting model in DDP wrapper')
     model = DDP(model, device_ids=[ddp_local_rank])
 
 # helps estimate an arbitrarily accurate loss over either split using many batches
