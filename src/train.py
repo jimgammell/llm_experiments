@@ -147,23 +147,11 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 data_dir = os.path.join('data', dataset)
 train_dataset = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
 val_dataset = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
-if ddp_rank == 0:
-    train_indices = np.random.choice(len(train_dataset), len(train_dataset), replace=False)
-    val_indices = np.random.choice(len(val_dataset), len(val_dataset), replace=False)
-else:
-    train_indices = val_indices = None
-indices = [train_indices, val_indices]
-print('Broadcasting indices...')
-torch.distributed.broadcast_object_list(indices, src=0)
-print('Done.')
-[train_indices, val_indices] = indices
 def get_dataloader(split):
-    indices = train_indices if split == 'train' else val_indices if split == 'val' else None
     dataset = train_dataset if split == 'train' else val_dataset if split == 'val' else None
     local_start_idx = int(len(indices)*ddp_rank/ddp_world_size)
     local_end_idx = min(len(dataset), int(len(indices)*(ddp_rank+1)/ddp_world_size))
-    indices = indices[local_start_idx:local_end_idx]
-    print(indices)
+    indices = np.arange(local_start_idx, local_end_idx)
     dataset = np.array(dataset[indices])
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=split=='train', pin_memory=False, num_workers=0)
     return dataloader
