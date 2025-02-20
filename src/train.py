@@ -147,19 +147,20 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 #   functions to load to RAM don't use multiprocessing and take an absurdly long time with a big dataset like this. I'm going to use
 #   ChatGPT's suggestions for how to do this.
 
+def _load_chunk(filename, offset, count, dtype):
+    with open(filename, 'rb') as f:
+        f.seek(offset)
+        return np.fromfile(f, dtype=dtype, count=count)
 def fast_load_np(filename, dtype=np.uint16, num_workers=8):
     file_size = os.path.getsize(filename)
     num_elements = file_size // np.dtype(dtype).itemsize
     chunk_size = num_elements // num_workers
-    def _load_chunk(offset, count):
-        with open(filename, 'rb') as f:
-            f.seek(offset)
-            return np.fromfile(f, dtype=dtype, count=count)
     offsets = [i*chunk_size*np.dtype(dtype).itemsize for i in range(num_workers)]
     counts = [chunk_size]*num_workers
     counts[-1] = num_elements - chunk_size*(num_workers - 1)
+    args = [(filename, offset, count, dtype) for offset, count in zip(offsets, counts)]
     with multiprocessing.Pool(num_workers) as pool:
-        chunks = pool.starmap(_load_chunk, zip(offsets, counts))
+        chunks = pool.starmap(_load_chunk, args)
     return np.concatenate(chunks)
 def load_dataset_to_shared_memory(data_dir, split, num_workers=8):
     filename = os.path.join(data_dir, f'{split}.bin')
