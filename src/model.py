@@ -104,9 +104,11 @@ class Block(nn.Module):
 
     def forward(self, x):
         x = self.ln_1(x)
-        x = x + self.attn(x)
+        x_resid_1 = self.attn(x)
+        x = checkpoint.checkpoint(lambda x, x_resid: x + x_resid, x, x_resid_1)
         x = self.ln_2(x)
-        x = x + self.mlp(x)
+        x_resid_2 = self.mlp(x)
+        x = checkpoint.checkpoint(lambda x, x_resid: x + x_resid, x, x_resid_2)
         return x
 
 @dataclass
