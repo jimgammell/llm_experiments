@@ -15,7 +15,7 @@ total_batch_size = gradient_accumulation_steps*batch_size
 
 # this makes total number of tokens be 300B
 total_tokens = int(3e8)
-max_iters = total_tokens // total_batch_size
+max_iters = total_tokens // (5*total_batch_size)
 lr_decay_iters = max_iters
 
 #max_iters = 600000
