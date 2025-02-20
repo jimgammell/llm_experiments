@@ -160,10 +160,10 @@ train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mod
 val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
 def get_dataloader(split):
     data = train_data if split == 'train' else val_data if split == 'val' else None
-    local_start_idx = int(len(dataset)*ddp_rank/ddp_world_size)
-    local_end_idx = min(len(dataset), int(len(dataset)*(ddp_rank+1)/ddp_world_size))
+    local_start_idx = int(len(data)*ddp_rank/ddp_world_size)
+    local_end_idx = min(len(data), int(len(data)*(ddp_rank+1)/ddp_world_size))
     indices = np.arange(local_start_idx, local_end_idx)
-    dataset = BlockDataset(np.array(dataset[indices]))
+    dataset = BlockDataset(np.array(data[indices]))
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=split=='train', pin_memory=False, num_workers=0)
     return dataloader
 train_dataloader = get_dataloader('train')
