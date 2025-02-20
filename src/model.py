@@ -27,6 +27,10 @@ class LayerNorm(nn.Module):
     def forward(self, input):
         return nn.functional.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
+class ScaledDotProductAttention(nn.Module):
+    def forward(self, q, k, v):
+        return nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout=0., is_causal=True)
+
 class CausalSelfAttention(nn.Module):
 
     def __init__(self, config):
@@ -39,6 +43,7 @@ class CausalSelfAttention(nn.Module):
         # regularization
         self.attn_dropout = nn.Dropout(config.dropout)
         self.resid_dropout = nn.Dropout(config.dropout)
+        self.attn = ScaledDotProductAttention()
         self.n_head = config.n_head
         self.n_embd = config.n_embd
         self.dropout = config.dropout
@@ -63,9 +68,7 @@ class CausalSelfAttention(nn.Module):
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         if self.flash:
             # efficient attention using Flash Attention CUDA kernels
-            y = checkpoint.checkpoint(
-                lambda q, k, v: nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=0., is_causal=True), q, k, v
-            )
+            y = checkpoint.checkpoint(self.attn, q, k, v)
             #y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
         else:
             # manual implementation of attention
