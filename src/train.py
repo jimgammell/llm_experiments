@@ -153,24 +153,22 @@ if ddp_rank == 0:
 else:
     train_indices = val_indices = None
 indices = [train_indices, val_indices]
+print('Broadcasting indices...')
 torch.distributed.broadcast_object_list(indices, src=0)
+print('Done.')
 [train_indices, val_indices] = indices
 def get_dataloader(split):
     indices = train_indices if split == 'train' else val_indices if split == 'val' else None
     dataset = train_dataset if split == 'train' else val_dataset if split == 'val' else None
     local_start_idx = int(len(indices)*ddp_rank/ddp_world_size)
     local_end_idx = min(len(dataset), int(len(indices)*(ddp_rank+1)/ddp_world_size))
-    indices = np.arange(local_start_idx, local_end_idx)
+    indices = indices[local_start_idx:local_end_idx]
     print(indices)
     dataset = np.array(dataset[indices])
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=split=='train', pin_memory=False, num_workers=0)
     return dataloader
 train_dataloader = get_dataloader('train')
 val_dataloader = get_dataloader('val')
-
-def dataloader_iterator(dataloader):
-    for batch in dataloader:
-        yield batch
 
 train_dataloader_iter = iter(train_dataloader)
 val_dataloader_iter = iter(val_dataloader)
