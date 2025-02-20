@@ -165,7 +165,14 @@ def fast_load_np(filename, dtype=np.uint16, num_workers=8):
 def load_dataset_to_shared_memory(data_dir, split, num_workers=8):
     filename = os.path.join(data_dir, f'{split}.bin')
     data = fast_load_np(filename, num_workers=num_workers)
-    shm = shared_memory.SharedMemory(name=f'{split}_shm', create=True, size=data.nbytes)
+    shm_name = f'{split}_shm'
+    try:
+        shm = shared_memory.SharedMemory(name=shm_name, create=True, size=data.nbytes)
+    except FileExistsError:
+        # If the shared memory already exists, remove it and try again.
+        existing_shm = shared_memory.SharedMemory(name=shm_name, create=False)
+        existing_shm.unlink()
+        shm = shared_memory.SharedMemory(name=shm_name, create=True, size=data.nbytes)
     shared_data = np.ndarray(data.shape, dtype=data.dtype, buffer=shm.buf)
     shared_data[:] = data[:]
     return data.shape, str(data.dtype), shm
