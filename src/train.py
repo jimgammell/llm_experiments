@@ -220,6 +220,9 @@ val_dataloader = DataLoader(val_dataset, batch_size=batch_size, pin_memory=True,
 train_dataloader_iter = iter(train_dataloader)
 val_dataloader_iter = iter(val_dataloader)
 
+torch.distributed.barrier()
+print('Finished creating datasets.')
+
 def get_batch(split):
     if split == 'train':
         iterator = train_dataloader_iter
