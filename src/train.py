@@ -218,11 +218,12 @@ train_dataset = SharedMemoryDataset(train_array)
 val_dataset = SharedMemoryDataset(val_array)
 train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=cpu_cores)
 val_dataloader = DataLoader(val_dataset, batch_size=batch_size, pin_memory=True, num_workers=cpu_cores)
-train_dataloader_iter = iter(train_dataloader)
-val_dataloader_iter = iter(val_dataloader)
 
 torch.distributed.barrier()
 print('Finished creating datasets.')
+
+train_dataloader_iter = iter(train_dataloader)
+val_dataloader_iter = iter(val_dataloader)
 
 def get_batch(split):
     if split == 'train':
