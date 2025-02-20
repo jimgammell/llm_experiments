@@ -179,6 +179,7 @@ if ddp_rank == 0:
 else:
     train_shape, train_dtype_str, train_shm = None, None, None
     val_shape, val_dtype_str, val_shm = None, None, None
+torch.distributed.barrier()
 dataset_info = [train_shape, train_dtype_str, val_shape, val_dtype_str]
 print('init', ddp_rank, dataset_info)
 torch.distributed.broadcast_object_list(dataset_info, src=0)
