@@ -11,7 +11,7 @@ wandb_run_name='gpt2-124M'
 gpu_count = 8
 total_batch_size = 480
 batch_size = 12
-gradient_accumulation_steps = total_batch_size // (batch_size*gpu_count)
+gradient_accumulation_steps = total_batch_size // batch_size
 assert gradient_accumulation_steps % gpu_count == 0
 
 # this makes total number of tokens be 300B
