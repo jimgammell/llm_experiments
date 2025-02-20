@@ -144,9 +144,9 @@ class MyDataset(Dataset):
     def __init__(self, data_dir, split):
         super().__init__()
         if split == 'train':
-            dataset = np.fromfile(os.path.join(data_dir, 'train.bin'), dtype=np.uint16)
+            self.dataset = np.fromfile(os.path.join(data_dir, 'train.bin'), dtype=np.uint16)
         elif split == 'val':
-            dataset = np.fromfile(os.path.join(data_dir, 'val.bin'), dtype=np.uint16)
+            self.dataset = np.fromfile(os.path.join(data_dir, 'val.bin'), dtype=np.uint16)
         else:
             assert False
     
