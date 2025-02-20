@@ -35,6 +35,7 @@ from model import GPTConfig, GPT
 
 cpu_cores = 14
 os.environ['OMP_NUM_THREADS'] = f'{cpu_cores}'
+os.environ['TORCHINDUCTOR_CACHE_DIR'] = r'/scratch/gautschi/jgammell/torchinductor_cache'
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
@@ -53,11 +54,10 @@ wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
 dataset = 'openwebtext'
 
-gpu_count = 8
-total_batch_size = 480
-batch_size = 12
-gradient_accumulation_steps = total_batch_size // batch_size
-assert gradient_accumulation_steps % gpu_count == 0
+gpu_count = None
+total_batch_size = None
+batch_size = None
+gradient_accumulation_steps = None
 
 block_size = 1024
 # model
