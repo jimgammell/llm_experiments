@@ -29,6 +29,8 @@ from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
 
+os.environ['OMP_NUM_THREADS'] = '14'
+
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
@@ -45,8 +47,13 @@ wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
 dataset = 'openwebtext'
-gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
-batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
+
+gpu_count = 8
+batch_size = 480
+per_gpu_batch_size = 12
+gradient_accumulation_steps = batch_size // per_gpu_batch_size
+assert gradient_accumulation_steps % gpu_count == 0
+
 block_size = 1024
 # model
 n_layer = 12
@@ -332,11 +339,11 @@ while True:
     if iter_num > max_iters:
         break
     
-    if iter_num == 1000:
+    if iter_num == 300:
         time_iter_start = time.time()
-    if iter_num == 2000:
+    if iter_num == 500:
         time_iter_end = time.time()
-        tokens_per_sec = tokens_per_iter * 1000 / (time_iter_end - time_iter_start)
+        tokens_per_sec = tokens_per_iter * 200 / (time_iter_end - time_iter_start)
         print(f'Tokens per second: {tokens_per_sec}')
         assert False
 
