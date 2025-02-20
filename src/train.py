@@ -157,7 +157,7 @@ def fast_load_np(filename, dtype=np.uint16, num_workers=8):
             return np.fromfile(f, dtype=dtype, count=count)
     offsets = [i*chunk_size*np.dtype(dtype).itemsize for i in range(num_workers)]
     counts = [chunk_size]*num_workers
-    counts[-1] - num_elements - chunk_size*(num_workers - 1)
+    counts[-1] = num_elements - chunk_size*(num_workers - 1)
     with multiprocessing.Pool(num_workers) as pool:
         chunks = pool.starmap(_load_chunk, zip(offsets, counts))
     return np.concatenate(chunks)
@@ -187,6 +187,9 @@ val_dtype = np.dtype(val_dtype_str)
 if ddp_rank != 0:
     train_array, train_shm = attach_shared_memory('train_shm', train_shape, train_dtype)
     val_array, val_shm = attach_shared_memory('val_shm', val_shape, val_dtype)
+else:
+    train_array = np.ndarray(train_shape, dtype=train_dtype, buffer=train_shm.buf)
+    val_array = np.ndarray(val_shape, dtype=val_dtype, buffer=val_shm.buf)
 
 class SharedMemoryDataset(Dataset):
     def __init__(self, data_array):
