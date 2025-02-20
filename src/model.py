@@ -82,18 +82,18 @@ class MLP(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        #self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        #self.gelu = nn.GELU()
-        self.swiglu = SwiGLU(config.n_embd, 4*config.n_embd, config.n_embd, bias=config.bias) # nn.GELU()
-        #self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
-        #self.dropout = nn.Dropout(config.dropout)
+        self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        self.gelu = nn.GELU()
+        #self.swiglu = SwiGLU(config.n_embd, 4*config.n_embd, config.n_embd, bias=config.bias) # nn.GELU()
+        self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
+        self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x):
-        #x = self.c_fc(x)
-        #x = checkpoint.checkpoint(self.gelu, x)
-        #x = self.c_proj(x)
-        #x = self.dropout(x)
-        x = self.swiglu(x)
+        x = self.c_fc(x)
+        x = checkpoint.checkpoint(self.gelu, x)
+        x = self.c_proj(x)
+        x = self.dropout(x)
+        #x = self.swiglu(x)
         return x
 
 class Block(nn.Module):
