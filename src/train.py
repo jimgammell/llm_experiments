@@ -176,6 +176,7 @@ data_dir = os.path.join('data', dataset)
 if ddp_rank == 0:
     train_shape, train_dtype_str, train_shm = load_dataset_to_shared_memory(data_dir, 'train', num_workers=cpu_cores)
     val_shape, val_dtype_str, val_shm = load_dataset_to_shared_memory(data_dir, 'val', num_workers=cpu_cores)
+    print('Loaded dataset to shared memory.')
 else:
     train_shape, train_dtype_str, train_shm = None, None, None
     val_shape, val_dtype_str, val_shm = None, None, None
