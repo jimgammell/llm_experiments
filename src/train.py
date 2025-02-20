@@ -202,6 +202,7 @@ if ddp_rank != 0:
 else:
     train_array = np.ndarray(train_shape, dtype=train_dtype, buffer=train_shm.buf)
     val_array = np.ndarray(val_shape, dtype=val_dtype, buffer=val_shm.buf)
+    print('Rank 0 attached to shared memory.')
 
 class SharedMemoryDataset(Dataset):
     def __init__(self, data_array):
