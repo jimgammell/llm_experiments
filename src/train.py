@@ -184,6 +184,7 @@ torch.distributed.broadcast_object_list(dataset_info, src=0)
 train_shape, train_dtype_str, val_shape, val_dtype_str = dataset_info
 train_dtype = np.dtype(train_dtype_str)
 val_dtype = np.dtype(val_dtype_str)
+print(train_shape, val_shape, train_dtype, val_dtype)
 if ddp_rank != 0:
     train_array, train_shm = attach_shared_memory('train_shm', train_shape, train_dtype)
     val_array, val_shm = attach_shared_memory('val_shm', val_shape, val_dtype)
