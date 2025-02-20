@@ -29,7 +29,7 @@ class LayerNorm(nn.Module):
 
 class ScaledDotProductAttention(nn.Module):
     def forward(self, q, k, v):
-        return nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout=0., is_causal=True)
+        return nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=0., is_causal=True)
 
 class CausalSelfAttention(nn.Module):
 
