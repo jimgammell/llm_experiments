@@ -227,9 +227,9 @@ print('Finished creating datasets.')
 
 def get_batch(split):
     if split == 'train':
-        iterator = iter(train_dataloader_iter)
+        iterator = iter(train_dataloader)
     elif split == 'val':
-        iterator = iter(val_dataloader_iter)
+        iterator = iter(val_dataloader)
     else:
         assert False
     x, y = next(iterator)
