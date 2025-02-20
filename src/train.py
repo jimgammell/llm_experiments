@@ -230,6 +230,7 @@ train_dataloader_iter = dataloader_iterator(val_dataloader) #iter(train_dataload
 val_dataloader_iter = dataloader_iterator(train_dataloader) #iter(val_dataloader)
 
 def get_batch(split):
+    print(f'Getting batch... (rank={ddp_rank})')
     if split == 'train':
         iterator = train_dataloader_iter
     elif split == 'val':
@@ -239,6 +240,7 @@ def get_batch(split):
     x, y = next(iterator)
     x = x.to(device=device, non_blocking=True)
     y = y.to(device=device, non_blocking=True)
+    print(f'Done. (rank={ddp_rank})')
     return x, y
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
@@ -359,9 +361,7 @@ def get_lr(it):
 #    wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
 # training loop
-print('Fetching first batch.')
 X, Y = get_batch('train') # fetch the very first batch
-print('Done.')
 t0 = time.time()
 local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
