@@ -339,9 +339,9 @@ while True:
     if iter_num > max_iters:
         break
     
-    if iter_num == 300:
+    if iter_num == 100:
         time_iter_start = time.time()
-    if iter_num == 500:
+    if iter_num == 300:
         time_iter_end = time.time()
         tokens_per_sec = tokens_per_iter * 200 / (time_iter_end - time_iter_start)
         print(f'Tokens per second: {tokens_per_sec}')
