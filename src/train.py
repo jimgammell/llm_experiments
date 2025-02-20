@@ -222,14 +222,14 @@ val_dataloader = DataLoader(val_dataset, batch_size=batch_size, pin_memory=True,
 torch.distributed.barrier()
 print('Finished creating datasets.')
 
-train_dataloader_iter = iter(train_dataloader)
-val_dataloader_iter = iter(val_dataloader)
+#train_dataloader_iter = iter(train_dataloader)
+#val_dataloader_iter = iter(val_dataloader)
 
 def get_batch(split):
     if split == 'train':
-        iterator = train_dataloader_iter
+        iterator = iter(train_dataloader_iter)
     elif split == 'val':
-        iterator = val_dataloader_iter
+        iterator = iter(val_dataloader_iter)
     else:
         assert False
     x, y = next(iterator)
