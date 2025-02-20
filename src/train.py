@@ -164,7 +164,7 @@ def get_dataloader(split):
     local_end_idx = min(len(data), int(len(data)*(ddp_rank+1)/ddp_world_size))
     indices = np.arange(local_start_idx, local_end_idx)
     dataset = BlockDataset(np.array(data[indices]))
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=split=='train', pin_memory=False, num_workers=0)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=split=='train', pin_memory=True, num_workers=cpu_cores)
     return dataloader
 train_dataloader = get_dataloader('train')
 val_dataloader = get_dataloader('val')
@@ -256,7 +256,7 @@ if init_from == 'resume':
 checkpoint = None # free up memory
 
 # compile the model
-if False: # compile:
+if compile:
     print("compiling the model... (takes a ~minute)")
     unoptimized_model = model
     model = torch.compile(model) # requires PyTorch 2.0
