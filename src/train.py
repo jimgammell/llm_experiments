@@ -20,6 +20,7 @@ import os
 import time
 import math
 import pickle
+from tqdm.auto import tqdm
 from contextlib import nullcontext
 
 import numpy as np
@@ -306,6 +307,10 @@ t0 = time.time()
 local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
+
+if ddp_rank == 0:
+    progress_bar = tqdm(total=max_iters)
+
 while True:
 
     # determine and set the learning rate for this iteration
@@ -381,6 +386,8 @@ while True:
         print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
     iter_num += 1
     local_iter_num += 1
+    if ddp_rank == 0:
+        progress_bar.update(1)
 
     # termination conditions
     if iter_num > max_iters:
