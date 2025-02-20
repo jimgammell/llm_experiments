@@ -189,20 +189,20 @@ else:
     train_shape, train_dtype_str, train_shm = None, None, None
     val_shape, val_dtype_str, val_shm = None, None, None
 dataset_info = [train_shape, train_dtype_str, val_shape, val_dtype_str]
-print('init', ddp_rank, dataset_info)
 torch.distributed.broadcast_object_list(dataset_info, src=0)
-print('init', ddp_rank, dataset_info)
 train_shape, train_dtype_str, val_shape, val_dtype_str = dataset_info
 train_dtype = np.dtype(train_dtype_str)
 val_dtype = np.dtype(val_dtype_str)
 if ddp_rank != 0:
+    print(f'Attaching rank {ddp_rank} to shared memory.')
     train_array, train_shm = attach_shared_memory('train_shm', train_shape, train_dtype)
     val_array, val_shm = attach_shared_memory('val_shm', val_shape, val_dtype)
-    print(f'Rank {ddp_rank} attached to shared memory.')
+    print(f'Done (rank {ddp_rank})')
 else:
+    print('Attaching rank 0 to shared memory.')
     train_array = np.ndarray(train_shape, dtype=train_dtype, buffer=train_shm.buf)
     val_array = np.ndarray(val_shape, dtype=val_dtype, buffer=val_shm.buf)
-    print('Rank 0 attached to shared memory.')
+    print(f'Done (rank 0)')
 
 class SharedMemoryDataset(Dataset):
     def __init__(self, data_array):
