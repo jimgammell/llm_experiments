@@ -144,15 +144,26 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 
 # Modifying the data loading process so that we can 1) store the whole dataset in RAM, and 2) take advantage of multiple CPU cores.
 
+class BlockDataset(Dataset):
+    def __init__(self, data):
+        super().__init__()
+        self.data = data
+    def __getitem__(self, idx):
+        x = torch.from_numpy(self.data[idx:idx+block_size].astype(np.int64))
+        y = torch.from_numpy(self.data[idx+1:idx+1+block_size].astype(np.int64))
+        return x, y
+    def __len__(self):
+        return len(self.data) - block_size
+
 data_dir = os.path.join('data', dataset)
-train_dataset = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
-val_dataset = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
+val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
 def get_dataloader(split):
-    dataset = train_dataset if split == 'train' else val_dataset if split == 'val' else None
-    local_start_idx = int(len(indices)*ddp_rank/ddp_world_size)
-    local_end_idx = min(len(dataset), int(len(indices)*(ddp_rank+1)/ddp_world_size))
+    data = train_data if split == 'train' else val_data if split == 'val' else None
+    local_start_idx = int(len(dataset)*ddp_rank/ddp_world_size)
+    local_end_idx = min(len(dataset), int(len(dataset)*(ddp_rank+1)/ddp_world_size))
     indices = np.arange(local_start_idx, local_end_idx)
-    dataset = np.array(dataset[indices])
+    dataset = BlockDataset(np.array(dataset[indices]))
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=split=='train', pin_memory=False, num_workers=0)
     return dataloader
 train_dataloader = get_dataloader('train')
