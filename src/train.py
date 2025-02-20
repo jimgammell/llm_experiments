@@ -396,8 +396,3 @@ while True:
 
 if ddp:
     destroy_process_group()
-    if ddp_rank == 0:
-        train_shm.close()
-        train_shm.unlink()
-        val_shm.close()
-        val_shm.unlink()
