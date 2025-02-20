@@ -237,8 +237,8 @@ def get_batch(split):
     else:
         assert False
     x, y = next(iterator)
-    x = x.to(device=device, nonblocking=True)
-    y = y.to(device=device, nonblocking=True)
+    x = x.to(device=device, non_blocking=True)
+    y = y.to(device=device, non_blocking=True)
     return x, y
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
