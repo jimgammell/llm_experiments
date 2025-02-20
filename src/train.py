@@ -24,7 +24,7 @@ from contextlib import nullcontext
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed
 from torch.distributed import init_process_group, destroy_process_group, get_rank, get_world_size
@@ -54,9 +54,9 @@ wandb_run_name = 'gpt2' # 'run' + str(time.time())
 dataset = 'openwebtext'
 
 gpu_count = 8
-batch_size = 480
-per_gpu_batch_size = 12
-gradient_accumulation_steps = batch_size // per_gpu_batch_size
+total_batch_size = 480
+batch_size = 12
+gradient_accumulation_steps = total_batch_size // batch_size
 assert gradient_accumulation_steps % gpu_count == 0
 
 block_size = 1024
@@ -216,8 +216,10 @@ class SharedMemoryDataset(Dataset):
         return len(self.data) - block_size
 train_dataset = SharedMemoryDataset(train_array)
 val_dataset = SharedMemoryDataset(val_array)
-train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0)
-val_dataloader = DataLoader(val_dataset, batch_size=batch_size, pin_memory=True, num_workers=0)
+train_sampler = DistributedSampler(train_dataset, shuffle=True, num_replicas=ddp_world_size, rank=ddp_rank)
+val_sampler = DistributedSampler(val_dataset, num_replicas=ddp_world_size, rank=ddp_rank)
+train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, pin_memory=True, num_workers=0)
+val_dataloader = DataLoader(val_dataset, batch_size=batch_size, sampler=val_sampler, pin_memory=True, num_workers=0)
 
 torch.distributed.barrier()
 print('Finished creating datasets.')
@@ -226,11 +228,10 @@ def dataloader_iterator(dataloader):
     for batch in dataloader:
         yield batch
 
-train_dataloader_iter = dataloader_iterator(val_dataloader) #iter(train_dataloader)
-val_dataloader_iter = dataloader_iterator(train_dataloader) #iter(val_dataloader)
+train_dataloader_iter = iter(train_dataloader)
+val_dataloader_iter = iter(val_dataloader)
 
 def get_batch(split):
-    print(f'Getting batch... (rank={ddp_rank})')
     if split == 'train':
         iterator = train_dataloader_iter
     elif split == 'val':
@@ -240,7 +241,6 @@ def get_batch(split):
     x, y = next(iterator)
     x = x.to(device=device, non_blocking=True)
     y = y.to(device=device, non_blocking=True)
-    print(f'Done. (rank={ddp_rank})')
     return x, y
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
