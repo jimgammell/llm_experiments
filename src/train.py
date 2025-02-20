@@ -26,7 +26,10 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.distributed import init_process_group, destroy_process_group
+import torch.distributed
+from torch.distributed import init_process_group, destroy_process_group, get_rank, get_world_size
+import multiprocessing
+from multiprocessing import shared_memory
 
 from model import GPTConfig, GPT
 
@@ -140,27 +143,63 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 #    return x, y
 
 # Modifying the data loading process so that we can 1) store the whole dataset in RAM, and 2) take advantage of multiple CPU cores.
-class MyDataset(Dataset):
-    def __init__(self, data_dir, split):
-        super().__init__()
-        if split == 'train':
-            self.dataset = np.fromfile(os.path.join(data_dir, 'train.bin'), dtype=np.uint16)
-        elif split == 'val':
-            self.dataset = np.fromfile(os.path.join(data_dir, 'val.bin'), dtype=np.uint16)
-        else:
-            assert False
-    
-    def __getitem__(self, idx):
-        x = torch.from_numpy((self.dataset[idx:idx+block_size]).astype(np.int64))
-        y = torch.from_numpy((self.dataset[idx+1:idx+1+block_size]).astype(np.int64))
-        return x, y
-    
-    def __len__(self):
-        return len(self.dataset) - block_size
+#   This isn't straightforward because we need to ensure that a single dataset is shared across all processes, and the basic
+#   functions to load to RAM don't use multiprocessing and take an absurdly long time with a big dataset like this. I'm going to use
+#   ChatGPT's suggestions for how to do this.
+
+def fast_load_np(filename, dtype=np.uint16, num_workers=8):
+    file_size = os.path.getsize(filename)
+    num_elements = file_size // np.dtype(dtype).itemsize
+    chunk_size = num_elements // num_workers
+    def _load_chunk(offset, count):
+        with open(filename, 'rb') as f:
+            f.seek(offset)
+            return np.fromfile(f, dtype=dtype, count=count)
+    offsets = [i*chunk_size*np.dtype(dtype).itemsize for i in range(num_workers)]
+    counts = [chunk_size]*num_workers
+    counts[-1] - num_elements - chunk_size*(num_workers - 1)
+    with multiprocessing.Pool(num_workers) as pool:
+        chunks = pool.starmap(_load_chunk, zip(offsets, counts))
+    return np.concatenate(chunks)
+def load_dataset_to_shared_memory(data_dir, split, num_workers=8):
+    filename = os.path.join(data_dir, f'{split}.bin')
+    data = fast_load_np(filename, num_workers=num_workers)
+    shm = shared_memory.SharedMemory(name=f'{split}_shm', create=True, size=data.nbytes)
+    shared_data = np.ndarray(data.shape, dtype=data.dtype, buffer=shm.buf)
+    shared_data[:] = data[:]
+    return data.shape, str(data.dtype), shm
+def attach_shared_memory(name, shape, dtype):
+    shm = shared_memory.SharedMemory(name=name, create=False)
+    return np.ndarray(shape, dtype=dtype, buffer=shm.buf), shm
 
 data_dir = os.path.join('data', dataset)
-train_dataset = MyDataset(data_dir, 'train')
-val_dataset = MyDataset(data_dir, 'val')
+if ddp_rank == 0:
+    train_shape, train_dtype_str, train_shm = load_dataset_to_shared_memory(data_dir, 'train', num_workers=cpu_cores)
+    val_shape, val_dtype_str, val_shm = load_dataset_to_shared_memory(data_dir, 'val', num_workers=cpu_cores)
+else:
+    train_shape, train_dtype_str, train_shm = None, None, None
+    val_shape, val_dtype_str, val_shm = None, None, None
+dataset_info = [train_shape, train_dtype_str, val_shape, val_dtype_str]
+torch.distributed.broadcast_object_list(dataset_info, src=0)
+train_shape, train_dtype_str, val_shape, val_dtype_str = dataset_info
+train_dtype = np.dtype(train_dtype_str)
+val_dtype = np.dtype(val_dtype_str)
+if ddp_rank != 0:
+    train_array, train_shm = attach_shared_memory('train_shm', train_shape, train_dtype)
+    val_array, val_shm = attach_shared_memory('val_shm', val_shape, val_dtype)
+
+class SharedMemoryDataset(Dataset):
+    def __init__(self, data_array):
+        super().__init__()
+        self.data = data_array
+    def __getitem__(self, idx):
+        x = torch.from_numpy(self.data[idx:idx+block_size].astype(np.int64))
+        y = torch.from_numpy(self.data[idx+1:idx+block_size+1].astype(np.int64))
+        return x, y
+    def __len__(self):
+        return len(self.data) - block_size
+train_dataset = SharedMemoryDataset(train_array)
+val_dataset = SharedMemoryDataset(val_array)
 train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=cpu_cores)
 val_dataloader = DataLoader(val_dataset, batch_size=batch_size, pin_memory=True, num_workers=cpu_cores)
 train_dataloader_iter = iter(train_dataloader)
@@ -390,3 +429,8 @@ while True:
 
 if ddp:
     destroy_process_group()
+    if ddp_rank == 0:
+        train_shm.close()
+        train_shm.unlink()
+        val_shm.close()
+        val_shm.unlink()
