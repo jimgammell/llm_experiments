@@ -193,7 +193,7 @@ if block_size < model.config.block_size:
 model.to(device)
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
-scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
+scaler = torch.amp.GradScaler('cuda', enabled=(dtype == 'float16'))
 
 # optimizer
 optimizer = model.configure_optimizers(weight_decay, learning_rate, (beta1, beta2), device_type)
@@ -242,9 +242,9 @@ def get_lr(it):
     return min_lr + coeff * (learning_rate - min_lr)
 
 # logging
-if wandb_log and master_process:
-    import wandb
-    wandb.init(project=wandb_project, name=wandb_run_name, config=config)
+#if wandb_log and master_process:
+#    import wandb
+#    wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
 # training loop
 X, Y = get_batch('train') # fetch the very first batch
@@ -263,14 +263,14 @@ while True:
     if iter_num % eval_interval == 0 and master_process:
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
-        if wandb_log:
-            wandb.log({
-                "iter": iter_num,
-                "train/loss": losses['train'],
-                "val/loss": losses['val'],
-                "lr": lr,
-                "mfu": running_mfu*100, # convert to percentage
-            })
+        #if wandb_log:
+        #    wandb.log({
+        #        "iter": iter_num,
+        #        "train/loss": losses['train'],
+        #        "val/loss": losses['val'],
+        #        "lr": lr,
+        #        "mfu": running_mfu*100, # convert to percentage
+        #    })
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
             if iter_num > 0:
@@ -331,6 +331,14 @@ while True:
     # termination conditions
     if iter_num > max_iters:
         break
+    
+    if iter_num == 1000:
+        time_iter_start = time.time()
+    if iter_num == 2000:
+        time_iter_end = time.time()
+        tokens_per_sec = tokens_per_iter * 1000 / (time_iter_end - time_iter_start)
+        print(f'Tokens per second: {tokens_per_sec}')
+        assert False
 
 if ddp:
     destroy_process_group()
