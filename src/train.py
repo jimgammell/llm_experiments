@@ -165,13 +165,23 @@ def get_dataloader(split):
     local_end_idx = min(len(data), int(len(data)*(ddp_rank+1)/ddp_world_size))
     indices = np.arange(local_start_idx, local_end_idx)
     dataset = BlockDataset(np.array(data[indices]))
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=split=='train', pin_memory=True, num_workers=cpu_cores)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=split=='train', pin_memory=True, drop_last=True, num_workers=cpu_cores)
     return dataloader
 train_dataloader = get_dataloader('train')
 val_dataloader = get_dataloader('val')
 
-train_dataloader_iter = iter(train_dataloader)
-val_dataloader_iter = iter(val_dataloader)
+def infinite_iterator(dataloader):
+    dataloader_iter = iter(dataloader)
+    while True:
+        try:
+            batch = next(dataloader_iter)
+        except StopIteration:
+            dataloader_iter = iter(dataloader)
+            batch = next(dataloader_iter)
+        yield batch
+
+train_dataloader_iter = infinite_iterator(train_dataloader)
+val_dataloader_iter = infinite_iterator(val_dataloader)
 
 def get_batch(split):
     if split == 'train':
@@ -180,7 +190,12 @@ def get_batch(split):
         iterator = val_dataloader_iter
     else:
         assert False
-    x, y = next(iterator)
+    try:
+        x, y = next(iterator)
+    except StopIteration:
+        train_dataloader_iter = iter(train_dataloader)
+        val_dataloader_iter = iter(val_dataloader)
+        x, y = next(iterator)
     x = x.to(device=device, non_blocking=True)
     y = y.to(device=device, non_blocking=True)
     return x, y
