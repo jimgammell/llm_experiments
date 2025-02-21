@@ -106,11 +106,9 @@ class Block(nn.Module):
         self.mlp = MLP(config)
 
     def forward(self, x):
-        x = self.ln_1(x)
-        x_resid_1 = self.attn(x)
+        x_resid_1 = self.attn(self.ln_1(x))
         x = checkpoint.checkpoint(lambda x, x_resid: x + x_resid, x, x_resid_1)
-        x = self.ln_2(x)
-        x_resid_2 = self.mlp(x)
+        x_resid_2 = self.mlp(self.ln_2(x))
         x = checkpoint.checkpoint(lambda x, x_resid: x + x_resid, x, x_resid_2)
         return x
 
