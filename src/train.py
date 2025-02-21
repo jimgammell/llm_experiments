@@ -190,12 +190,7 @@ def get_batch(split):
         iterator = val_dataloader_iter
     else:
         assert False
-    try:
-        x, y = next(iterator)
-    except StopIteration:
-        train_dataloader_iter = iter(train_dataloader)
-        val_dataloader_iter = iter(val_dataloader)
-        x, y = next(iterator)
+    x, y = next(iterator)
     x = x.to(device=device, non_blocking=True)
     y = y.to(device=device, non_blocking=True)
     return x, y
